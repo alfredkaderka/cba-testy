@@ -39009,5 +39009,149 @@
 
         window.addEventListener('DOMContentLoaded', initApp);
     </script>
+<!-- Plovoucí Island vpravo dole pro rychlé přepínání palcem -->
+    <style>
+        #btnCorrect { display: none !important; } /* Skryje původní tlačítko nahoře */
+        .FLOATING-ISLAND {
+            position: fixed;
+            bottom: max(22px, env(safe-area-inset-bottom, 22px));
+            right: 18px;
+            z-index: 100000;
+            background: rgba(28, 28, 30, 0.92);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            color: #ffffff;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 999px;
+            padding: 13px 20px;
+            font-size: 14px;
+            font-weight: 600;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+            transition: transform 0.12s ease, background 0.2s ease;
+        }
+        .FLOATING-ISLAND:active {
+            transform: scale(0.93);
+        }
+        .FLOATING-ISLAND.hidden-answers {
+            background: rgba(0, 122, 255, 0.95);
+        }
+    </style>
+
+    <button class="FLOATING-ISLAND" id="islandCorrectBtn" onclick="toggleCorrect()">
+        <span>🙈</span> <span id="islandCorrectText">Skrýt správné</span>
+    </button>
+
+    <script>
+        const STORAGE_KEY = 'cba_sektor6_bookmark';
+        let showCorrect = true;
+
+        function getMainQuestions() {
+            // Vybere pouze hlavní otázky (odfiltruje vnořené podbloky, které dělaly 1333 místo 1018)
+            return Array.from(document.querySelectorAll('.QUESTION')).filter(q => !q.parentElement.closest('.QUESTION'));
+        }
+
+        function initApp() {
+            // Odstraníme případná stará tlačítka záložek, pokud by v HTML už byla
+            document.querySelectorAll('.BOOKMARK-BTN').forEach(b => b.remove());
+
+            const questions = getMainQuestions();
+            questions.forEach((q, idx) => {
+                const qNum = idx + 1;
+                q.setAttribute('data-qnum', qNum);
+                q.id = 'q-' + qNum;
+
+                const btn = document.createElement('button');
+                btn.className = 'BOOKMARK-BTN';
+                btn.innerHTML = '🔖 Zde jsem skončil (#' + qNum + ')';
+                btn.onclick = () => setBookmark(qNum);
+                q.insertBefore(btn, q.firstChild);
+            });
+
+            loadBookmark();
+        }
+
+        function setBookmark(qNum) {
+            localStorage.setItem(STORAGE_KEY, qNum);
+            loadBookmark();
+        }
+
+        function loadBookmark() {
+            const saved = localStorage.getItem(STORAGE_KEY);
+            const questions = getMainQuestions();
+            const total = questions.length;
+
+            questions.forEach(q => {
+                q.classList.remove('BOOKMARKED');
+                const btn = q.querySelector('.BOOKMARK-BTN');
+                const num = q.getAttribute('data-qnum');
+                if (btn) btn.innerHTML = '🔖 Zde jsem skončil (#' + num + ')';
+            });
+
+            if (saved) {
+                const target = document.getElementById('q-' + saved);
+                if (target) {
+                    target.classList.add('BOOKMARKED');
+                    const btn = target.querySelector('.BOOKMARK-BTN');
+                    if (btn) btn.innerHTML = '✅ Zde jsem skončil (#' + saved + ')';
+                    document.getElementById('bookmarkStatus').innerText = '📍 Záložka: ' + saved + ' / ' + total;
+                }
+            } else {
+                document.getElementById('bookmarkStatus').innerText = '📍 Záložka: nenastavena (celkem ' + total + ')';
+            }
+        }
+
+        function scrollToBookmark() {
+            const saved = localStorage.getItem(STORAGE_KEY);
+            if (!saved) {
+                alert('Zatím nemáš uloženou žádnou pozici. Klikni u libovolné otázky na tlačítko "Zde jsem skončil".');
+                return;
+            }
+            const target = document.getElementById('q-' + saved);
+            if (target) {
+                const y = target.getBoundingClientRect().top + window.pageYOffset - 130;
+                window.scrollTo({ top: y, behavior: 'smooth' });
+            }
+        }
+
+        function toggleCorrect() {
+            showCorrect = !showCorrect;
+            const container = document.getElementById('testContainer');
+            const islandBtn = document.getElementById('islandCorrectBtn');
+
+            if (showCorrect) {
+                container.classList.remove('HIDECORRECT');
+                islandBtn.innerHTML = '<span>🙈</span> <span>Skrýt správné</span>';
+                islandBtn.classList.remove('hidden-answers');
+            } else {
+                container.classList.add('HIDECORRECT');
+                islandBtn.innerHTML = '<span>👁️</span> <span>Ukázat správné</span>';
+                islandBtn.classList.add('hidden-answers');
+            }
+        }
+
+        function applyFilters() {
+            const zn = document.getElementById('fZnalosti').checked;
+            const jm = document.getElementById('fJM').checked;
+            const vm = document.getElementById('fVM').checked;
+            const dov = document.getElementById('fDovednosti').checked;
+
+            document.querySelectorAll('.BLOK.ZNALOSTI').forEach(el => el.style.display = zn ? '' : 'none');
+            document.querySelectorAll('.ZNALOSTI_JM').forEach(el => {
+                if (el.parentElement) el.parentElement.style.display = (zn && jm) ? '' : 'none';
+            });
+            document.querySelectorAll('.ZNALOSTI_VM').forEach(el => {
+                if (el.parentElement) el.parentElement.style.display = (zn && vm) ? '' : 'none';
+            });
+            document.querySelectorAll('.BLOK.DOVEDNOSTI').forEach(el => el.style.display = dov ? '' : 'none');
+        }
+
+        window.addEventListener('DOMContentLoaded', initApp);
+    </script>
 </body>
 </html>
