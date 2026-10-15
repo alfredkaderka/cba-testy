@@ -39009,9 +39009,9 @@
 
         window.addEventListener('DOMContentLoaded', initApp);
    
-<!-- Plovoucí Island vpravo dole pro rychlé přepínání palcem -->
+<!-- Plovoucí Island vpravo dole a styly pro Gemini -->
     <style>
-        #btnCorrect { display: none !important; } /* Skryje původní tlačítko nahoře */
+        #btnCorrect { display: none !important; }
         .FLOATING-ISLAND {
             position: fixed;
             bottom: max(22px, env(safe-area-inset-bottom, 22px));
@@ -39041,7 +39041,64 @@
         .FLOATING-ISLAND.hidden-answers {
             background: rgba(0, 122, 255, 0.95);
         }
+        /* Lišta tlačítek u každé otázky */
+        .Q-ACTION-BAR {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .BOOKMARK-BTN {
+            margin-bottom: 0 !important;
+        }
+        .GEMINI-BTN {
+            background: linear-gradient(135deg, #4b6cb7 0%, #8e44ad 100%);
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            padding: 5px 10px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            box-shadow: 0 2px 5px rgba(142, 68, 173, 0.25);
+        }
+        .GEMINI-BTN:active {
+            opacity: 0.8;
+        }
+        /* Zvýraznění klikatelného kódu otázky */
+        .GEMINI-CODE-LINK {
+            cursor: pointer;
+            text-decoration: underline dotted #8e44ad;
+            color: #6c3483;
+            font-weight: bold;
+            padding: 2px 5px;
+            border-radius: 4px;
+            background: rgba(142, 68, 173, 0.08);
+        }
+        /* Notifikace o zkopírování */
+        .GEMINI-TOAST {
+            position: fixed;
+            top: 85px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(28, 28, 30, 0.95);
+            color: #fff;
+            padding: 10px 18px;
+            border-radius: 999px;
+            font-size: 13px;
+            font-weight: 600;
+            z-index: 200000;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+            display: none;
+            white-space: nowrap;
+        }
     </style>
+
+    <div class="GEMINI-TOAST" id="geminiToast">✨ Otázka zkopírována! Vlož ji v Gemini.</div>
 
     <button class="FLOATING-ISLAND" id="islandCorrectBtn" onclick="toggleCorrect()">
         <span>🙈</span> <span id="islandCorrectText">Skrýt správné</span>
@@ -39052,13 +39109,11 @@
         let showCorrect = true;
 
         function getMainQuestions() {
-            // Vybere pouze hlavní otázky (odfiltruje vnořené podbloky, které dělaly 1333 místo 1018)
             return Array.from(document.querySelectorAll('.QUESTION')).filter(q => !q.parentElement.closest('.QUESTION'));
         }
 
         function initApp() {
-            // Odstraníme případná stará tlačítka záložek, pokud by v HTML už byla
-            document.querySelectorAll('.BOOKMARK-BTN').forEach(b => b.remove());
+            document.querySelectorAll('.BOOKMARK-BTN, .GEMINI-BTN, .Q-ACTION-BAR').forEach(b => b.remove());
 
             const questions = getMainQuestions();
             questions.forEach((q, idx) => {
@@ -39066,14 +39121,97 @@
                 q.setAttribute('data-qnum', qNum);
                 q.id = 'q-' + qNum;
 
+                // Kontejner pro tlačítka Záložka + Gemini
+                const bar = document.createElement('div');
+                bar.className = 'Q-ACTION-BAR';
+
                 const btn = document.createElement('button');
                 btn.className = 'BOOKMARK-BTN';
                 btn.innerHTML = '🔖 Zde jsem skončil (#' + qNum + ')';
                 btn.onclick = () => setBookmark(qNum);
-                q.insertBefore(btn, q.firstChild);
+
+                const gemBtn = document.createElement('button');
+                gemBtn.className = 'GEMINI-BTN';
+                gemBtn.innerHTML = '✨ Vysvětlit v Gemini';
+                gemBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    askGemini(q);
+                };
+
+                bar.appendChild(btn);
+                bar.appendChild(gemBtn);
+                q.insertBefore(bar, q.firstChild);
+
+                // Uděláme klikatelný i samotný kód/hlavičku otázky
+                const codeSelectors = ['.ID', '.CODE', '. KOD', '.NUMBER', '.QID', '.HEADER', '.INFO'];
+                codeSelectors.forEach(sel => {
+                    q.querySelectorAll(sel).forEach(el => {
+                        el.classList.add('GEMINI-CODE-LINK');
+                        el.title = 'Kliknutím zkopíruješ otázku a otevřeš Gemini';
+                        el.onclick = (e) => {
+                            e.stopPropagation();
+                            askGemini(q);
+                        };
+                    });
+                });
             });
 
             loadBookmark();
+        }
+
+        function askGemini(qElement) {
+            const clone = qElement.cloneNode(true);
+            clone.querySelectorAll('.Q-ACTION-BAR, .BOOKMARK-BTN, .GEMINI-BTN').forEach(el => el.remove());
+
+            // Pokud je otázka součástí případové studie, přibalíme i kontext studie
+            let contextText = '';
+            const studyParent = qElement.closest('.STUDIA, .CASE');
+            if (studyParent) {
+                const studyClone = studyParent.cloneNode(true);
+                studyClone.querySelectorAll('.QUESTION').forEach(el => el.remove());
+                const rawStudy = studyClone.innerText.replace(/\n{3,}/g, '\n\n').trim();
+                if (rawStudy) {
+                    contextText = 'KONTEXT PŘÍPADOVÉ STUDIE:\n' + rawStudy + '\n\n';
+                }
+            }
+
+            const questionText = clone.innerText.replace(/\n{3,}/g, '\n\n').trim();
+            const prompt = `Vysvětli mi prosím podrobně a srozumitelně tuto testovou otázku ČBA. Uveď, která odpověď je správná a proč, a stručně vysvětli, proč jsou ostatní možnosti špatně:\n\n${contextText}${questionText}`;
+
+            // Zkopírujeme do schránky iPhonu
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(prompt).then(() => {
+                    triggerGeminiLaunch();
+                }).catch(() => {
+                    fallbackCopy(prompt);
+                });
+            } else {
+                fallbackCopy(prompt);
+            }
+        }
+
+        function fallbackCopy(text) {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.focus();
+            ta.select();
+            try { document.execCommand('copy'); } catch (e) {}
+            document.body.removeChild(ta);
+            triggerGeminiLaunch();
+        }
+
+        function triggerGeminiLaunch() {
+            const toast = document.getElementById('geminiToast');
+            toast.style.display = 'block';
+            setTimeout(() => { toast.style.display = 'none'; }, 3500);
+
+            // Otevře aplikaci Gemini na iPhonu (Universal Link)
+            setTimeout(() => {
+                window.location.href = 'https://gemini.google.com/app';
+            }, 350);
         }
 
         function setBookmark(qNum) {
